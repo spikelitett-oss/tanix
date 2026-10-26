@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Позволяет запускать сборку вручную кнопкой
+  workflow_dispatch:
 
 jobs:
   build:
@@ -19,13 +19,13 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew || true # || true нужно, так как у вас нет файла gradlew
+    # Этот шаг выведет точную ошибку Kotlin в лог
+    - name: Build with Gradle (Full Logs)
+      run: gradle assembleDebug --stacktrace --info
 
-    - name: Build with Gradle
-      run: gradle assembleDebug
-
+    # Загрузка APK (сработает только если сборка успешна)
     - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
