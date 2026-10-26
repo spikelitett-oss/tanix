@@ -1,32 +1,69 @@
-name: Build Android APK
+name: Build APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, master ]
+    tags: [ "v*" ]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 40
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      # Находим папку проекта (где лежит settings.gradle.kts),
+      # чтобы всё работало и если проект в корне репозитория, и если в подпапке TanixLauncher/
+      - name: Find project directory
+        id: find
+        run: |
+          f=$(find . -name settings.gradle.kts -not -path "*/build/*" | head -n 1)
+          if [ -z "$f" ]; then echo "settings.gradle.kts не найден"; exit 1; fi
+          echo "dir=$(dirname "$f")" >> "$GITHUB_OUTPUT"
 
-    # Этот шаг выведет точную ошибку Kotlin в лог
-    - name: Build with Gradle (Full Logs)
-      run: gradle assembleDebug --stacktrace --info
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
 
-    # Загрузка APK (сработает только если сборка успешна)
-    - name: Upload APK
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+      # Android SDK уже установлен на ubuntu-latest, отдельная установка не нужна.
+      # Только принимаем лицензии, чтобы Gradle мог докачать недостающие пакеты.
+      - name: Accept Android SDK licenses
+        run: |
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -n 1)
+          if [ -n "$SDKM" ]; then yes | "$SDKM" --licenses > /dev/null 2>&1 || true; fi
+          echo "ANDROID_HOME=$ANDROID_HOME"
+
+      # В проекте нет gradlew (его создаёт Android Studio), поэтому берём Gradle напрямую.
+      # AGP 8.5.2 требует Gradle 8.7+.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug and release APK
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: gradle assembleDebug assembleRelease -Dorg.gradle.jvmargs=-Xmx4g
+
+      - name: Collect APKs
+        run: |
+          mkdir -p dist
+          cp "${{ steps.find.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk" dist/Tanix-Launcher-debug.apk
+          cp "${{ steps.find.outputs.dir }}/app/build/outputs/apk/release/app-release.apk" dist/Tanix-Launcher-release.apk
+          ls -lh dist
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tanix-Launcher-APK
+          path: dist/*.apk
+
+      # При создании тега (например v1.2) APK ещё и прикрепится к релизу на странице Releases
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
