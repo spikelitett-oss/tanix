@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <!-- Зеркало TMDB из плагина Lampa (rootu.top) работает по http -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">tmdb-api.rootu.top</domain>
+        <domain includeSubdomains="false">tmdb-img.rootu.top</domain>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,36 @@
+# Tanix Launcher 2.0 — Material You лаунчер для Android TV
+
+## Сборка в GitHub Actions (без Android Studio)
+1. Создайте репозиторий на github.com (кнопка **New**).
+2. Распакуйте архив и загрузите ВСЕ файлы в репозиторий (**Add file → Upload files**; папка `.github` тоже должна попасть —
+   если она скрыта в проводнике, включите показ скрытых файлов).
+3. Откройте вкладку **Actions** — сборка запустится сама (или **Run workflow** вручную).
+4. Через 5–10 минут откройте завершённый запуск → внизу **Artifacts → TanixLauncher-apk**. Внутри:
+   - `release/TanixLauncher-release.apk` — маленький, оптимизированный (его и ставьте);
+   - `debug/TanixLauncher-debug.apk` — для отладки.
+5. Чтобы получить APK ссылкой в «Releases»: создайте тег `v2.0` (Releases → Draft a new release → тег `v2.0`) —
+   workflow сам прикрепит APK.
+
+### Своя подпись (необязательно)
+Settings → Secrets and variables → Actions → добавьте: `KEYSTORE_BASE64` (keystore в base64),
+`KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. Без них release подписывается debug-ключом (ставится так же).
+
+> Про папку `gradle`: gradlew и gradle-wrapper.jar в проекте нет — workflow ставит Gradle 8.9 сам
+> (`gradle/actions/setup-gradle`). Android Studio создаст wrapper автоматически при открытии проекта.
+
+## Установка на приставку
+adb connect IP:5555 → adb install -r TanixLauncher-release.apk  
+Главным экраном: `adb shell cmd package set-home-activity com.tanix.launcher/.MainActivity`
+
+## Возможности
+- Вкладки «Для вас / Приложения / Избранное», сдвиг и проявление при переключении, фон меняется по фокусу на постере.
+- Долгое нажатие OK на значке: открыть, переместить (стрелками), избранное, скрыть, о приложении, удалить.
+- Прокрутка с «опорной точкой» как в Google TV, пружинный фокус, каскадное появление рядов.
+- Кнопка ТВ (Lampa, ILTV…), погода (Open-Meteo), российские фильмы и сериалы (TMDB, авто-обновление раз в 4 дня).
+- Настройки в две панели: тема, динамические цвета, 12 акцентов, AMOLED, масштаб, шрифт, скругления, поля экрана,
+  фон, форма и размер значков, порядок рядов, анимации и пресеты, часы, дата, погода, прокси TMDB.
+
+## Прокси TMDB
+По умолчанию — зеркало из плагина Lampa (tmdb-api.rootu.top / tmdb-img.rootu.top, работает по http,
+в network_security_config.xml http разрешён только для этих двух адресов). Есть также DNS-over-HTTPS и своё зеркало.
+Нужен ваш бесплатный ключ TMDB v3.
