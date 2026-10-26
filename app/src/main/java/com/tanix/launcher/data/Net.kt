@@ -6,10 +6,15 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.IOException
 import java.net.InetAddress
+import java.net.UnknownHostException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-/** Сетевой клиент. При включённом DoH адреса tmdb-хостов берутся через Cloudflare/Google DNS-over-HTTPS. */
+/**
+ * Сетевой клиент.
+ * - Для TMDB при включённом DoH адреса берутся через DNS-over-HTTPS (Cloudflare/Google).
+ * - Для остальных хостов (погода и т.д.): если DNS провайдера не отвечает, автоматически пробуем DoH.
+ */
 object Net {
     @Volatile var dohEnabled = false
 
@@ -43,15 +48,27 @@ object Net {
         return emptyList()
     }
 
+    private fun cachedDoh(host: String): List<InetAddress> {
+        val now = System.currentTimeMillis()
+        cache[host]?.takeIf { it.first > now }?.let { return it.second }
+        val res = resolveDoh(host)
+        if (res.isNotEmpty()) cache[host] = (now + 10 * 60_000) to res
+        return res
+    }
+
     private val dns = object : Dns {
         override fun lookup(hostname: String): List<InetAddress> {
             val isTmdb = hostname.contains("tmdb") || hostname.contains("themoviedb")
-            if (!dohEnabled || !isTmdb) return Dns.SYSTEM.lookup(hostname)
-            val now = System.currentTimeMillis()
-            cache[hostname]?.takeIf { it.first > now }?.let { return it.second }
-            val res = resolveDoh(hostname)
-            if (res.isNotEmpty()) { cache[hostname] = (now + 10 * 60_000) to res; return res }
-            return Dns.SYSTEM.lookup(hostname)
+            if (dohEnabled && isTmdb) {
+                val r = cachedDoh(hostname)
+                if (r.isNotEmpty()) return r
+            }
+            return try {
+                Dns.SYSTEM.lookup(hostname)
+            } catch (e: UnknownHostException) {
+                val r = cachedDoh(hostname)
+                if (r.isNotEmpty()) r else throw e
+            }
         }
     }
 
@@ -61,8 +78,8 @@ object Net {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    fun get(url: String): String {
-        val req = Request.Builder().url(url).header("User-Agent", "TanixLauncher/2.0").build()
+    fun get(url: String, userAgent: String = "TanixLauncher/2.1"): String {
+        val req = Request.Builder().url(url).header("User-Agent", userAgent).build()
         client.newCall(req).execute().use { r ->
             if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
             return r.body!!.string()

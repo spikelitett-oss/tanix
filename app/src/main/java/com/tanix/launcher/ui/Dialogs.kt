@@ -17,6 +17,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.tanix.launcher.HomeViewModel
 import com.tanix.launcher.data.AppItem
 import com.tanix.launcher.data.City
 import com.tanix.launcher.data.Repo
@@ -108,11 +109,11 @@ fun AppListDialog(
     }
 }
 
-enum class AppAction { OPEN, MOVE, FAVORITE, HIDE, INFO, UNINSTALL }
+enum class AppAction { OPEN, MOVE, HOME, FAVORITE, HIDE, INFO, UNINSTALL }
 
 /** Контекстное меню приложения (долгое нажатие OK). */
 @Composable
-fun AppMenuDialog(app: AppItem, isFav: Boolean, onAction: (AppAction) -> Unit, onDismiss: () -> Unit) {
+fun AppMenuDialog(app: AppItem, isFav: Boolean, inHome: Boolean, onAction: (AppAction) -> Unit, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         DialogCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -123,6 +124,7 @@ fun AppMenuDialog(app: AppItem, isFav: Boolean, onAction: (AppAction) -> Unit, o
             Spacer(Modifier.height(12.dp))
             SettingRow("Открыть", onClick = { onAction(AppAction.OPEN) })
             SettingRow("Переместить", "Стрелками на пульте, OK — готово", onClick = { onAction(AppAction.MOVE) })
+            SettingRow(if (inHome) "Убрать с главного экрана" else "Добавить на главный экран", onClick = { onAction(AppAction.HOME) })
             SettingRow(if (isFav) "Убрать из избранного" else "В избранное", onClick = { onAction(AppAction.FAVORITE) })
             SettingRow("Скрыть с главного экрана", onClick = { onAction(AppAction.HIDE) })
             SettingRow("О приложении", onClick = { onAction(AppAction.INFO) })
@@ -167,4 +169,15 @@ fun CityDialog(onDismiss: () -> Unit, onPick: (City) -> Unit) {
             Chip("Закрыть", onClick = onDismiss)
         }
     }
+}
+
+/** Выбор приложений для главного экрана (рекомендуем около 15). */
+@Composable
+fun HomeAppsDialog(vm: HomeViewModel, onDismiss: () -> Unit) {
+    val chosen = vm.homeAppList.map { it.pkg }.toSet()
+    AppListDialog(
+        "На главном экране: ${chosen.size} (рекомендуем около 15)",
+        vm.orderedApps.filter { it.pkg !in vm.s.hidden },
+        checked = chosen, onClick = { vm.toggleHome(it.pkg) }, onDismiss = onDismiss
+    )
 }

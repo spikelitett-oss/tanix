@@ -48,6 +48,13 @@ class SettingsStore(ctx: Context) {
             iconShape = i("iconShape", d.iconShape),
             showLabels = b("showLabels", d.showLabels),
             sortMode = i("sortMode", d.sortMode),
+            tileStyle = i("tileStyle", d.tileStyle),
+            labelMode = i("labelMode", d.labelMode),
+            glow = b("glow", d.glow),
+            shine = b("shine", d.shine),
+            kenBurns = b("kenBurns", d.kenBurns),
+            homeConfigured = b("homeConfigured", d.homeConfigured),
+            homeApps = list("homeApps"),
             animOn = b("animOn", d.animOn),
             animSpeed = i("animSpeed", d.animSpeed),
             focusK = i("focusK", d.focusK),
@@ -107,6 +114,13 @@ class SettingsStore(ctx: Context) {
         e.putInt("iconShape", s.iconShape)
         e.putBoolean("showLabels", s.showLabels)
         e.putInt("sortMode", s.sortMode)
+        e.putInt("tileStyle", s.tileStyle)
+        e.putInt("labelMode", s.labelMode)
+        e.putBoolean("glow", s.glow)
+        e.putBoolean("shine", s.shine)
+        e.putBoolean("kenBurns", s.kenBurns)
+        e.putBoolean("homeConfigured", s.homeConfigured)
+        e.putString("homeApps", s.homeApps.joinToString(","))
         e.putBoolean("animOn", s.animOn)
         e.putInt("animSpeed", s.animSpeed)
         e.putInt("focusK", s.focusK)

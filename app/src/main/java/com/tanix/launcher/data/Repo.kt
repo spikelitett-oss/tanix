@@ -8,6 +8,7 @@ import androidx.core.graphics.drawable.toBitmap
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.Locale
 
 object Repo {
 
@@ -22,7 +23,15 @@ object Repo {
                 if (pkg == ctx.packageName || result.containsKey(pkg)) continue
                 runCatching {
                     val d = ri.loadIcon(pm)
-                    result[pkg] = AppItem(ri.loadLabel(pm).toString(), pkg, d.toBitmap(216, 216).asImageBitmap(), d is AdaptiveIconDrawable)
+                    // Баннер 16:9, который приложение предоставляет для Android TV (как плитки Netflix, YouTube…)
+                    val bannerDrawable = runCatching {
+                        ri.activityInfo.loadBanner(pm) ?: ri.activityInfo.applicationInfo.loadBanner(pm)
+                    }.getOrNull()
+                    val banner = bannerDrawable?.let { b -> runCatching { b.toBitmap(320, 180).asImageBitmap() }.getOrNull() }
+                    result[pkg] = AppItem(
+                        ri.loadLabel(pm).toString(), pkg,
+                        d.toBitmap(216, 216).asImageBitmap(), d is AdaptiveIconDrawable, banner
+                    )
                 }
             }
         }
@@ -43,7 +52,13 @@ object Repo {
         else -> apps.sortedBy { it.label.lowercase() }
     }
 
-    // ---------- Погода (Open-Meteo, без ключа) ----------
+    /** Приложения на главном экране: выбранные вручную или (пока не настроено) первые 15. */
+    fun homeApps(apps: List<AppItem>, s: LauncherSettings): List<AppItem> {
+        val visible = orderApps(apps, s).filter { it.pkg !in s.hidden }
+        return if (s.homeConfigured) s.homeApps.mapNotNull { p -> visible.firstOrNull { it.pkg == p } } else visible.take(15)
+    }
+
+    // ---------- Погода ----------
     fun searchCity(q: String): List<City> {
         if (q.isBlank()) return emptyList()
         val url = "https://geocoding-api.open-meteo.com/v1/search?name=${URLEncoder.encode(q, "UTF-8")}&count=6&language=ru&format=json"
@@ -58,13 +73,55 @@ object Repo {
         }
     }
 
-    fun loadWeather(s: LauncherSettings): Weather? = runCatching {
+    /** Сначала Open-Meteo, при ошибке — MET Norway. В ошибке указано, что именно не сработало. */
+    fun loadWeather(s: LauncherSettings): Result<Weather> {
+        val a = runCatching { openMeteo(s) }
+        if (a.isSuccess) return a
+        val b = runCatching { metNo(s) }
+        if (b.isSuccess) return b
+        return Result.failure(
+            Exception("Open-Meteo: ${a.exceptionOrNull()?.message ?: "?"}; MET.no: ${b.exceptionOrNull()?.message ?: "?"}")
+        )
+    }
+
+    private fun openMeteo(s: LauncherSettings): Weather {
         val unit = if (s.fahrenheit) "&temperature_unit=fahrenheit" else ""
         val url = "https://api.open-meteo.com/v1/forecast?latitude=${s.lat}&longitude=${s.lon}" +
             "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&wind_speed_unit=ms&timezone=auto$unit"
         val c = JSONObject(Net.get(url)).getJSONObject("current")
-        Weather(c.getDouble("temperature_2m"), c.getDouble("apparent_temperature"), c.getInt("weather_code"), c.getDouble("wind_speed_10m"))
-    }.getOrNull()
+        return Weather(c.getDouble("temperature_2m"), c.getDouble("apparent_temperature"), c.getInt("weather_code"), c.getDouble("wind_speed_10m"))
+    }
+
+    private fun metNo(s: LauncherSettings): Weather {
+        val url = "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=" +
+            String.format(Locale.US, "%.4f", s.lat) + "&lon=" + String.format(Locale.US, "%.4f", s.lon)
+        val data = JSONObject(Net.get(url, "TanixLauncher/2.1 github.com/tanix-launcher"))
+            .getJSONObject("properties").getJSONArray("timeseries").getJSONObject(0).getJSONObject("data")
+        val d = data.getJSONObject("instant").getJSONObject("details")
+        var t = d.getDouble("air_temperature")
+        val wind = d.optDouble("wind_speed", 0.0)
+        val sym = data.optJSONObject("next_1_hours")?.optJSONObject("summary")?.optString("symbol_code")
+            ?: data.optJSONObject("next_6_hours")?.optJSONObject("summary")?.optString("symbol_code")
+            ?: "cloudy"
+        if (s.fahrenheit) t = t * 9.0 / 5.0 + 32.0
+        return Weather(t, t, symbolToCode(sym), wind)
+    }
+
+    private fun symbolToCode(sym: String): Int {
+        val b = sym.substringBefore('_')
+        return when {
+            b.startsWith("clearsky") -> 0
+            b.startsWith("fair") -> 1
+            b.startsWith("partlycloudy") -> 2
+            b == "cloudy" -> 3
+            b.contains("fog") -> 45
+            b.contains("thunder") -> 95
+            b.contains("snow") || b.contains("sleet") -> 73
+            b.contains("lightrain") -> 61
+            b.contains("rain") -> 63
+            else -> 3
+        }
+    }
 
     fun weatherInfo(code: Int): Pair<String, String> = when (code) {
         0 -> "☀️" to "Ясно"
@@ -85,6 +142,11 @@ object Repo {
     @Volatile var rootuScheme = "http"
     private const val ROOTU_API = "tmdb-api.rootu.top"
     private const val ROOTU_IMG = "tmdb-img.rootu.top"
+
+    /** Зеркало Rootu (из плагина Lampa) можно пробовать и без своего ключа. */
+    fun keyOptional(s: LauncherSettings) = s.proxyOn && s.proxyType == 0
+
+    private fun keyParam(s: LauncherSettings) = if (s.tmdbKey.isBlank()) "" else "&api_key=${s.tmdbKey.trim()}"
 
     fun tmdbApiBase(s: LauncherSettings): String = when {
         !s.proxyOn -> "https://api.themoviedb.org"
@@ -117,29 +179,37 @@ object Repo {
         return Net.get(tmdbApiBase(s) + path)
     }
 
-    /** Только российские фильмы и сериалы (язык оригинала ru, страна RU), свежие за 3 года, по популярности. */
+    private fun ok(x: String) = x.isNotBlank() && x != "null"
+
+    /** Только российские фильмы и сериалы, свежие за 3 года, по популярности. Карточки — горизонтальные (backdrop). */
     fun fetchReco(s: LauncherSettings): List<HeroItem> {
-        val key = s.tmdbKey.trim()
         val since = java.time.LocalDate.now().minusYears(3).toString()
 
         fun discover(kind: String): List<HeroItem> {
             val dateParam = if (kind == "movie") "primary_release_date.gte" else "first_air_date.gte"
-            val url = "/3/discover/$kind?api_key=$key&language=ru-RU&sort_by=popularity.desc" +
-                "&with_original_language=ru&with_origin_country=RU&vote_count.gte=3&include_adult=false&$dateParam=$since"
+            val url = "/3/discover/$kind?language=ru-RU&sort_by=popularity.desc" +
+                "&with_original_language=ru&with_origin_country=RU&vote_count.gte=3&include_adult=false&$dateParam=$since" +
+                keyParam(s)
             val arr = JSONObject(tmdbGet(s, url)).getJSONArray("results")
+            val img = tmdbImageBase(s)
             val out = ArrayList<HeroItem>()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val poster = o.optString("poster_path")
-                if (poster.isBlank() || poster == "null") continue
                 val back = o.optString("backdrop_path")
+                if (!ok(poster) && !ok(back)) continue
                 val rating = o.optDouble("vote_average", 0.0)
+                val year = o.optString("release_date").ifBlank { o.optString("first_air_date") }.take(4)
                 out += HeroItem(
                     title = o.optString("title").ifBlank { o.optString("name") },
-                    subtitle = o.optString("overview").trim().ifBlank { "Описание отсутствует" }.take(200),
-                    imageUrl = "${tmdbImageBase(s)}/w342$poster",
-                    bgUrl = if (back.isNotBlank() && back != "null") "${tmdbImageBase(s)}/w780$back" else null,
-                    badge = (if (kind == "tv") "Сериал" else "Фильм") + if (rating > 0) " · ★ %.1f".format(rating) else ""
+                    subtitle = o.optString("overview").trim().ifBlank { "Описание отсутствует" }.take(260),
+                    imageUrl = if (ok(back)) "$img/w300$back" else "$img/w342$poster",
+                    bgUrl = if (ok(back)) "$img/w780$back" else null,
+                    badge = listOfNotNull(
+                        if (kind == "tv") "Сериал" else "Фильм",
+                        year.ifBlank { null },
+                        if (rating > 0) "★ %.1f".format(rating) else null
+                    ).joinToString(" · ")
                 )
             }
             return out
@@ -180,10 +250,13 @@ object Repo {
     }.getOrDefault(emptyList())
 
     fun testTmdb(s: LauncherSettings): String {
-        if (s.tmdbKey.isBlank()) return "Сначала введите API-ключ"
+        if (s.tmdbKey.isBlank() && !keyOptional(s)) return "Сначала введите API-ключ"
         return runCatching {
-            tmdbGet(s, "/3/configuration?api_key=${s.tmdbKey.trim()}")
+            tmdbGet(s, "/3/configuration?" + keyParam(s).removePrefix("&"))
             "✓ Соединение работает" + if (s.proxyOn && s.proxyType == 0) " ($rootuScheme)" else ""
-        }.getOrElse { "✗ Ошибка: ${it.message ?: it.javaClass.simpleName}" }
+        }.getOrElse {
+            "✗ Ошибка: ${it.message ?: it.javaClass.simpleName}" +
+                if (s.tmdbKey.isBlank()) " — введите свой API-ключ TMDB" else ""
+        }
     }
 }

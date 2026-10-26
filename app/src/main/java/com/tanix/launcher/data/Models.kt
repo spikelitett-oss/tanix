@@ -3,7 +3,7 @@ package com.tanix.launcher.data
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 
-data class AppItem(val label: String, val pkg: String, val icon: ImageBitmap?, val adaptive: Boolean)
+data class AppItem(val label: String, val pkg: String, val icon: ImageBitmap?, val adaptive: Boolean, val banner: ImageBitmap? = null)
 
 enum class HeroMode(val title: String) { RECO("Рекомендации"), FAVORITES("Избранное") }
 

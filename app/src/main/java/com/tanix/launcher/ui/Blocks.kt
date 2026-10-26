@@ -35,9 +35,12 @@ fun ThemeBlock(vm: HomeViewModel) {
 @Composable
 fun IconsBlock(vm: HomeViewModel) {
     val s = vm.s
-    OptionRow("Форма значков", listOf("Круг", "Скруглённый", "Квадрат"), s.iconShape) { v -> vm.update { it.copy(iconShape = v) } }
-    OptionRow("Размер значков", listOf("Мелкие", "Средние", "Крупные", "Огромные"), s.iconSize) { v -> vm.update { it.copy(iconSize = v) } }
-    SwitchRow("Подписи под значками", null, s.showLabels) { v -> vm.update { it.copy(showLabels = v) } }
+    OptionRow(
+        "Вид плиток приложений",
+        listOf("Баннеры (как в Google TV)", "Круг", "Скруглённый квадрат", "Квадрат"), s.tileStyle
+    ) { v -> vm.update { it.copy(tileStyle = v) } }
+    OptionRow("Размер плиток", listOf("Мелкие", "Средние", "Крупные", "Огромные"), s.iconSize) { v -> vm.update { it.copy(iconSize = v) } }
+    OptionRow("Подписи", listOf("Всегда", "При фокусе", "Скрыть"), s.labelMode) { v -> vm.update { it.copy(labelMode = v) } }
 }
 
 @Composable
@@ -48,7 +51,8 @@ fun WeatherBlock(vm: HomeViewModel) {
     OptionRow("Единицы температуры", listOf("°C", "°F"), if (s.fahrenheit) 1 else 0) { v -> vm.update { it.copy(fahrenheit = v == 1) } }
     SettingRow(
         "Обновить сейчас",
-        vm.weather?.let { Repo.weatherInfo(it.code).second + ", ощущается как " + it.feels.toInt() + "°" },
+        vm.weatherError?.let { "Ошибка: $it" }
+            ?: vm.weather?.let { Repo.weatherInfo(it.code).second + ", ощущается как " + it.feels.toInt() + "°" },
         onClick = { vm.loadWeather() }
     )
     if (showCity) CityDialog({ showCity = false }) { c ->
@@ -67,7 +71,7 @@ fun TmdbBlock(vm: HomeViewModel, advanced: Boolean) {
 
     SettingRow(
         "API-ключ TMDB",
-        if (s.tmdbKey.isBlank()) "Не задан — нажмите, чтобы ввести" else "Задан (••••${s.tmdbKey.takeLast(4)})",
+        if (s.tmdbKey.isBlank()) (if (Repo.keyOptional(s)) "Не задан — пробуем без ключа через Rootu" else "Не задан — нажмите, чтобы ввести") else "Задан (••••${s.tmdbKey.takeLast(4)})",
         onClick = { showKey = true }
     )
     SwitchRow("Включить прокси TMDB", "Обход блокировки TMDB в России", checked = s.proxyOn) { v -> vm.update { it.copy(proxyOn = v) } }

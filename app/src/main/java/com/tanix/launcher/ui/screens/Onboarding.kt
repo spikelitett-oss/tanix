@@ -30,6 +30,7 @@ fun Onboarding(vm: HomeViewModel) {
     val ctx = rememberCtx()
     var step by remember { mutableIntStateOf(0) }
     var showTvApp by remember { mutableStateOf(false) }
+    var showHome by remember { mutableStateOf(false) }
     val last = 6
     val next = remember { FocusRequester() }
     LaunchedEffect(step) { delay(200); runCatching { next.requestFocus() } }
@@ -54,10 +55,12 @@ fun Onboarding(vm: HomeViewModel) {
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "Tanix — лаунчер в стиле Material You для вашей приставки.\n\n" +
+                            "• главный экран как в Google TV: большой блок и подборка\n" +
+                            "• ваши приложения баннерами (до 15, можно менять)\n" +
                             "• вкладки «Для вас», «Приложения», «Избранное»\n" +
                             "• значки можно переставлять (долгое нажатие OK)\n" +
                             "• погода на главном экране\n" +
-                            "• российские фильмы и сериалы с постерами\n" +
+                            "• российские фильмы и сериалы\n" +
                             "• кнопка ТВ: быстрый запуск Lampa, ILTV и др.\n" +
                             "• десятки настроек оформления и анимаций\n\n" +
                             "Настроим всё за минуту.",
@@ -69,8 +72,8 @@ fun Onboarding(vm: HomeViewModel) {
                     SettingsSection("Тема и цвета") { ThemeBlock(vm) }
                 }
                 2 -> {
-                    StepTitle("Значки приложений")
-                    SettingsSection("Форма и размер") { IconsBlock(vm) }
+                    StepTitle("Плитки приложений")
+                    SettingsSection("Вид и размер") { IconsBlock(vm) }
                 }
                 3 -> {
                     StepTitle("Что показывать на главном экране")
@@ -102,6 +105,7 @@ fun Onboarding(vm: HomeViewModel) {
                         color = cs.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center
                     )
                     SettingsSection("Последний шаг") {
+                        SettingRow("Приложения на главном экране", "Выберите около 15", onClick = { showHome = true })
                         SettingRow(
                             "Приложение для кнопки ТВ",
                             vm.apps.firstOrNull { it.pkg == s.tvPkg }?.label ?: "Например Lampa или ILTV",
@@ -117,6 +121,7 @@ fun Onboarding(vm: HomeViewModel) {
                 }
             }
 
+            if (showHome) HomeAppsDialog(vm) { showHome = false }
             if (showTvApp) AppListDialog("Приложение для кнопки ТВ", vm.orderedApps, onClick = { app ->
                 vm.update { it.copy(tvPkg = app.pkg) }; showTvApp = false
             }, onDismiss = { showTvApp = false })

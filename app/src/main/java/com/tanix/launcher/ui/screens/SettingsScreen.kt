@@ -29,8 +29,8 @@ import com.tanix.launcher.data.HeroMode
 import com.tanix.launcher.ui.*
 
 private val Categories = listOf(
-    "Внешний вид", "Главный экран", "Значки", "Постеры", "Анимации",
-    "Погода и время", "Рекомендации", "Приложения", "Система"
+    "Внешний вид", "Главный экран", "Плитки", "Подборка", "Анимации",
+    "Погода и время", "TMDB и прокси", "Приложения", "Система"
 )
 
 /** Настройки в две панели (как в Google TV): слева категории, справа параметры. */
@@ -64,10 +64,10 @@ fun SettingsScreen(vm: HomeViewModel, onBack: () -> Unit) {
                             style = MaterialTheme.typography.labelLarge,
                             modifier = Modifier.fillMaxWidth()
                                 .background(when { f -> cs.primary; i == cat -> cs.secondaryContainer; else -> androidx.compose.ui.graphics.Color.Transparent })
-                                .padding(horizontal = 18.dp, vertical = 12.dp)
+                                .padding(horizontal = 20.dp, vertical = 14.dp)
                         )
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
                 Spacer(Modifier.weight(1f))
                 Image(
@@ -135,7 +135,7 @@ private fun HomePane(vm: HomeViewModel) {
         SwitchRow("Переключать вкладки при наведении", "Как в Google TV; иначе — по нажатию OK", s.tabOnFocus) { v -> vm.update { it.copy(tabOnFocus = v) } }
     }
     SettingsSection("Что показывать на вкладке «Для вас»") {
-        SwitchRow("Постеры (рекомендации)", null, s.showHero) { v -> vm.update { it.copy(showHero = v) } }
+        SwitchRow("Большой блок и подборка (рекомендации)", null, s.showHero) { v -> vm.update { it.copy(showHero = v) } }
         SwitchRow("Ряд «Ваши приложения»", null, s.showAppsRow) { v -> vm.update { it.copy(showAppsRow = v) } }
         SwitchRow("Ряд «Избранное»", "Долгое нажатие OK на приложении → «В избранное»", s.showFavRow) { v -> vm.update { it.copy(showFavRow = v) } }
         SwitchRow("Ряд «Недавние»", null, s.showRecentRow) { v -> vm.update { it.copy(showRecentRow = v) } }
@@ -144,7 +144,7 @@ private fun HomePane(vm: HomeViewModel) {
         s.rowOrder.forEachIndexed { i, key ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    when (key) { "posters" -> "Постеры"; "apps" -> "Ваши приложения"; "fav" -> "Избранное"; else -> "Недавние" },
+                    when (key) { "posters" -> "Подборка для вас"; "apps" -> "Ваши приложения"; "fav" -> "Избранное"; else -> "Недавние" },
                     color = cs.onSurface, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f)
                 )
                 Chip("▲") { vm.moveRow(i, -1) }
@@ -158,15 +158,15 @@ private fun HomePane(vm: HomeViewModel) {
 @Composable
 private fun IconsPane(vm: HomeViewModel) {
     val s = vm.s
-    SettingsSection("Значки приложений") { IconsBlock(vm) }
+    SettingsSection("Плитки приложений") { IconsBlock(vm) }
     SettingsSection("Порядок") {
-        OptionRow("Сортировка", listOf("По алфавиту", "Свой порядок", "Недавние сверху"), s.sortMode) { v -> vm.update { it.copy(sortMode = v) } }
-        SettingRow("Сбросить порядок значков", "Вернуть сортировку по алфавиту", onClick = { vm.resetOrder() })
+        OptionRow("Сортировка (вкладка «Приложения»)", listOf("По алфавиту", "Свой порядок", "Недавние сверху"), s.sortMode) { v -> vm.update { it.copy(sortMode = v) } }
+        SettingRow("Сбросить порядок", "Вернуть сортировку по алфавиту", onClick = { vm.resetOrder() })
     }
-    SettingsSection("Как переставлять значки") {
+    SettingsSection("Как переставлять плитки") {
         SettingRow(
-            "Долгое нажатие OK на значке → «Переместить»",
-            "Дальше стрелками на пульте; OK или Назад — готово. В меню также: избранное, скрыть, о приложении, удалить.",
+            "Долгое нажатие OK на плитке → «Переместить»",
+            "Дальше стрелками на пульте; OK или Назад — готово. В меню также: убрать с главного экрана, избранное, скрыть, о приложении, удалить.",
             onClick = {}
         )
     }
@@ -175,12 +175,12 @@ private fun IconsPane(vm: HomeViewModel) {
 @Composable
 private fun PostersPane(vm: HomeViewModel) {
     val s = vm.s
-    SettingsSection("Постеры") {
+    SettingsSection("Подборка и большой блок") {
         OptionRow("Источник", HeroMode.values().map { it.title }, s.heroSource.ordinal) { v -> vm.update { it.copy(heroSource = HeroMode.values()[v]) } }
         OptionRow("Тип рекомендаций", listOf("Фильмы и сериалы", "Только фильмы", "Только сериалы"), s.recoType) { v -> vm.update { it.copy(recoType = v) } }
-        OptionRow("Размер постеров", listOf("Малые", "Средние", "Большие"), s.posterSize) { v -> vm.update { it.copy(posterSize = v) } }
-        SwitchRow("Описание под названием", null, s.posterDesc) { v -> vm.update { it.copy(posterDesc = v) } }
-        SwitchRow("Метка «Фильм · ★ 7.8»", null, s.posterBadge) { v -> vm.update { it.copy(posterBadge = v) } }
+        OptionRow("Размер карточек", listOf("Малые", "Средние", "Большие"), s.posterSize) { v -> vm.update { it.copy(posterSize = v) } }
+        SwitchRow("Описание в большом блоке", null, s.posterDesc) { v -> vm.update { it.copy(posterDesc = v) } }
+        SwitchRow("Метка «Фильм · 2024 · ★ 7.8»", null, s.posterBadge) { v -> vm.update { it.copy(posterBadge = v) } }
     }
 }
 
@@ -190,10 +190,15 @@ private fun AnimationsPane(vm: HomeViewModel) {
     SettingsSection("Пресеты") {
         Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Chip("Как в Google TV") {
-                vm.update { it.copy(animOn = true, animSpeed = 1, focusK = 2, focusStyle = 0, enterAnim = true, pivotScroll = true, bgStyle = 2) }
+                vm.update {
+                    it.copy(animOn = true, animSpeed = 1, focusK = 2, focusStyle = 0, enterAnim = true,
+                        glow = true, shine = true, kenBurns = true, bgStyle = 2)
+                }
             }
             Chip("Лёгкий режим (слабые приставки)") {
-                vm.update { it.copy(animOn = false, enterAnim = false, pivotScroll = false, bgStyle = 0, focusK = 1) }
+                vm.update {
+                    it.copy(animOn = false, enterAnim = false, glow = false, shine = false, kenBurns = false, bgStyle = 0, focusK = 1)
+                }
             }
         }
     }
@@ -201,7 +206,11 @@ private fun AnimationsPane(vm: HomeViewModel) {
         SwitchRow("Анимации включены", null, s.animOn) { v -> vm.update { it.copy(animOn = v) } }
         OptionRow("Скорость", listOf("Быстро", "Обычно", "Плавно"), s.animSpeed) { v -> vm.update { it.copy(animSpeed = v) } }
         SwitchRow("Появление рядов каскадом", null, s.enterAnim) { v -> vm.update { it.copy(enterAnim = v) } }
-        SwitchRow("Прокрутка как в Google TV", "Фокус удерживается у края, лента плавно едет", s.pivotScroll) { v -> vm.update { it.copy(pivotScroll = v) } }
+    }
+    SettingsSection("Эффекты") {
+        SwitchRow("Свечение вокруг плитки при фокусе", null, s.glow) { v -> vm.update { it.copy(glow = v) } }
+        SwitchRow("Блик, пробегающий по плитке", null, s.shine) { v -> vm.update { it.copy(shine = v) } }
+        SwitchRow("Медленный наезд фона", "Эффект Кена Бернса; на слабых приставках лучше выключить", s.kenBurns) { v -> vm.update { it.copy(kenBurns = v) } }
     }
     SettingsSection("Фокус") {
         OptionRow("Увеличение при фокусе", listOf("Нет", "Малое", "Обычное", "Сильное"), s.focusK) { v -> vm.update { it.copy(focusK = v) } }
@@ -230,9 +239,16 @@ private fun AppsPane(vm: HomeViewModel) {
     val s = vm.s
     var showTv by remember { mutableStateOf(false) }
     var showHidden by remember { mutableStateOf(false) }
+    var showHome by remember { mutableStateOf(false) }
+    SettingsSection("Приложения на главном экране") {
+        SettingRow("Выбрать приложения", "Сейчас: ${vm.homeAppList.size} (рекомендуем около 15)", onClick = { showHome = true })
+        SettingRow("Сбросить к автоматическому списку", "Первые 15 приложений", onClick = {
+            vm.update { it.copy(homeConfigured = false, homeApps = emptyList()) }
+        })
+    }
     SettingsSection("Кнопка ТВ") {
         SettingRow(
-            "Приложение для кнопки ТВ и постеров",
+            "Приложение для кнопки ТВ и подборки",
             vm.apps.firstOrNull { it.pkg == s.tvPkg }?.label ?: "Не выбрано (Lampa, ILTV…)",
             onClick = { showTv = true }
         )
@@ -241,6 +257,7 @@ private fun AppsPane(vm: HomeViewModel) {
         SettingRow("Выбрать скрытые", "Скрыто: ${s.hidden.size}", onClick = { showHidden = true })
         SettingRow("Показать все", null, onClick = { vm.update { it.copy(hidden = emptySet()) } })
     }
+    if (showHome) HomeAppsDialog(vm) { showHome = false }
     if (showTv) {
         AppListDialog("Приложение для кнопки ТВ", vm.orderedApps, onClick = { app ->
             vm.update { it.copy(tvPkg = app.pkg) }; showTv = false
@@ -263,7 +280,7 @@ private fun SystemPane(vm: HomeViewModel) {
         SettingRow("Сбросить оформление", "Ключ TMDB, город, избранное и скрытые приложения сохранятся", onClick = { confirmReset = true })
     }
     SettingsSection("О приложении") {
-        SettingRow("Tanix Launcher 2.0", "Material You · погода · российские фильмы и сериалы", onClick = {})
+        SettingRow("Tanix Launcher 2.1", "Material You · погода · российские фильмы и сериалы", onClick = {})
     }
     if (confirmReset) {
         ConfirmDialog("Сбросить оформление?", "Все параметры внешнего вида вернутся к значениям по умолчанию.", "Сбросить",

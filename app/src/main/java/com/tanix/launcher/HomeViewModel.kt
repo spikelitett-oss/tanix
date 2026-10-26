@@ -28,6 +28,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     var apps by mutableStateOf(listOf<AppItem>()); private set
     var hero by mutableStateOf(listOf(HeroItem("Загрузка…", ""))); private set
     var weather by mutableStateOf<Weather?>(null); private set
+    var weatherError by mutableStateOf<String?>(null); private set
     var recoUpdatedAt by mutableStateOf(cache.getLong("ts", 0L)); private set
     var homeSignal by mutableIntStateOf(0); private set
 
@@ -36,13 +37,17 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     /** Приложения в порядке, выбранном пользователем. */
     val orderedApps: List<AppItem> get() = Repo.orderApps(apps, s)
 
+    /** Приложения, которые показываются на главном экране в ряду «Ваши приложения». */
+    val homeAppList: List<AppItem> get() = Repo.homeApps(apps, s)
+
     init {
         applyNet(s)
         viewModelScope.launch {
             while (true) {
-                loadWeatherNow()
+                val ok = loadWeatherNow()
                 if (isRecoStale()) loadHero()
-                delay(30 * 60_000L)
+                // если погода не загрузилась (например, сеть ещё не поднялась) — повторяем через 30 секунд
+                delay(if (ok) 30 * 60_000L else 30_000L)
             }
         }
         loadHero()
@@ -68,20 +73,21 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         if (old.lat != new.lat || old.lon != new.lon || old.fahrenheit != new.fahrenheit) loadWeather()
     }
 
-    /** Сброс внешнего вида; ключ TMDB, город, избранное и скрытые приложения сохраняются. */
+    /** Сброс внешнего вида; ключ TMDB, город, избранное, скрытые и выбранные приложения сохраняются. */
     fun resetAppearance() = update {
         LauncherSettings(
             onboarded = true, tmdbKey = it.tmdbKey, city = it.city, lat = it.lat, lon = it.lon,
-            tvPkg = it.tvPkg, favorites = it.favorites, hidden = it.hidden, recents = it.recents
+            tvPkg = it.tvPkg, favorites = it.favorites, hidden = it.hidden, recents = it.recents,
+            homeConfigured = it.homeConfigured, homeApps = it.homeApps
         )
     }
 
-    // ---------------- Порядок ----------------
+    // ---------------- Порядок и главный экран ----------------
     fun freezeOrder() = update { it.copy(appOrder = Repo.orderApps(apps, it).map { a -> a.pkg }, sortMode = 1) }
 
     fun resetOrder() = update { it.copy(appOrder = emptyList(), sortMode = 0) }
 
-    /** Перемещение значка внутри отображаемого списка [subset] на [delta] позиций. */
+    /** Перемещение значка внутри отображаемого списка [subset] на [delta] позиций (общий порядок). */
     fun moveApp(pkg: String, delta: Int, subset: List<String>) {
         val i = subset.indexOf(pkg)
         if (i < 0) return
@@ -94,6 +100,22 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         if (slots.size != reordered.size) return
         slots.forEachIndexed { k, slot -> g[slot] = reordered[k] }
         update { it.copy(appOrder = g, sortMode = 1) }
+    }
+
+    /** Добавить/убрать приложение в ряду «Ваши приложения» на главном экране. */
+    fun toggleHome(pkg: String) = update {
+        val cur = Repo.homeApps(apps, it).map { a -> a.pkg }
+        it.copy(homeConfigured = true, homeApps = if (pkg in cur) cur - pkg else cur + pkg)
+    }
+
+    /** Переставить приложение в ряду «Ваши приложения». */
+    fun moveHome(pkg: String, delta: Int) = update {
+        val cur = Repo.homeApps(apps, it).map { a -> a.pkg }.toMutableList()
+        val i = cur.indexOf(pkg)
+        if (i < 0) return@update it
+        val j = (i + delta).coerceIn(0, cur.lastIndex)
+        if (i != j) { cur.removeAt(i); cur.add(j, pkg) }
+        it.copy(homeConfigured = true, homeApps = cur)
     }
 
     fun moveRow(i: Int, d: Int) = update {
@@ -113,22 +135,24 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadWeather() { viewModelScope.launch { loadWeatherNow() } }
 
-    private suspend fun loadWeatherNow() {
-        val w = withContext(Dispatchers.IO) { Repo.loadWeather(s) }
-        if (w != null) weather = w
+    private suspend fun loadWeatherNow(): Boolean {
+        val r = withContext(Dispatchers.IO) { Repo.loadWeather(s) }
+        r.onSuccess { weather = it; weatherError = null }
+        r.onFailure { weatherError = it.message ?: "ошибка сети" }
+        return r.isSuccess
     }
 
-    private fun fingerprint(c: LauncherSettings) = "${c.tmdbKey}|${c.recoType}|${c.proxyOn}|${c.proxyType}|${c.proxyBase}"
+    private fun fingerprint(c: LauncherSettings) = "v3|${c.tmdbKey}|${c.recoType}|${c.proxyOn}|${c.proxyType}|${c.proxyBase}"
 
     private fun isRecoStale() =
-        s.heroSource == HeroMode.RECO && s.showHero && s.tmdbKey.isNotBlank() &&
+        s.heroSource == HeroMode.RECO && s.showHero && (s.tmdbKey.isNotBlank() || Repo.keyOptional(s)) &&
             System.currentTimeMillis() - cache.getLong("ts", 0L) >= UPDATE_MS
 
     fun refreshReco() = loadHero(force = true)
 
     private suspend fun recoItems(cur: LauncherSettings, force: Boolean): List<HeroItem> {
-        if (cur.tmdbKey.isBlank()) {
-            return listOf(HeroItem("Подключите рекомендации", "Настройки → Рекомендации → API-ключ TMDB", color = Color(0xFF455A64)))
+        if (cur.tmdbKey.isBlank() && !Repo.keyOptional(cur)) {
+            return listOf(HeroItem("Подключите рекомендации", "Настройки → TMDB и прокси → API-ключ", color = Color(0xFF455A64)))
         }
         val fp = fingerprint(cur)
         val ts = cache.getLong("ts", 0L)
@@ -143,7 +167,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             return fresh
         }
         return cached.ifEmpty {
-            listOf(HeroItem("Не удалось загрузить", "Проверьте ключ и прокси TMDB в настройках", color = Color(0xFF455A64)))
+            val hint = if (cur.tmdbKey.isBlank()) "Введите свой API-ключ TMDB в настройках" else "Проверьте ключ и прокси TMDB в настройках"
+            listOf(HeroItem("Не удалось загрузить", hint, color = Color(0xFF455A64)))
         }
     }
 

@@ -6,6 +6,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,8 +33,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
@@ -52,15 +56,16 @@ fun HomeScreen(vm: HomeViewModel, openSettings: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var showPicker by remember { mutableStateOf(false) }
+    var showHomeApps by remember { mutableStateOf(false) }
     var menuApp by remember { mutableStateOf<AppItem?>(null) }
     var moving by remember { mutableStateOf<String?>(null) }
     var bgUrl by remember { mutableStateOf<String?>(null) }
 
     val visible = vm.orderedApps.filter { it.pkg !in s.hidden }
+    val home = vm.homeAppList
 
     LaunchedEffect(vm.homeSignal) { tab = 0; moving = null }
     LaunchedEffect(s.showTabs) { if (!s.showTabs) tab = 0 }
-    LaunchedEffect(vm.hero) { if (bgUrl == null) bgUrl = vm.hero.firstOrNull()?.bgUrl }
 
     BackHandler(enabled = moving != null) { moving = null }
     BackHandler(enabled = moving == null && tab != 0) { tab = 0 }
@@ -68,13 +73,13 @@ fun HomeScreen(vm: HomeViewModel, openSettings: () -> Unit) {
     val ms = animMs(320)
 
     Box(Modifier.fillMaxSize()) {
-        HomeBackground(bgUrl)
+        HomeBackground(if (tab == 0) bgUrl else null)
 
         Column(
             Modifier.fillMaxSize().padding(horizontal = Look.at(Look.Paddings, s.screenPadding).dp, vertical = 18.dp)
         ) {
             TopBar(vm, tab, onTab = { tab = it }, openSettings = openSettings, onPick = { showPicker = true })
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
 
             // Переключение вкладок: сдвиг + проявление в сторону движения (как в Google TV)
             AnimatedContent(
@@ -89,10 +94,11 @@ fun HomeScreen(vm: HomeViewModel, openSettings: () -> Unit) {
             ) { t ->
                 when (t) {
                     0 -> ForYouPage(
-                        vm, visible, moving,
+                        vm, home, visible, moving,
                         onMenu = { menuApp = it }, onDone = { moving = null },
                         onBg = { bgUrl = it },
-                        onOpenHero = { item -> if (vm.openHero(item)) showPicker = true }
+                        onOpenHero = { item -> if (vm.openHero(item)) showPicker = true },
+                        onAddApps = { showHomeApps = true }
                     )
                     1 -> AppsGridPage(vm, visible, "Нет приложений", moving, onMenu = { menuApp = it }, onDone = { moving = null })
                     else -> AppsGridPage(
@@ -119,10 +125,11 @@ fun HomeScreen(vm: HomeViewModel, openSettings: () -> Unit) {
     }
 
     menuApp?.let { app ->
-        AppMenuDialog(app, app.pkg in s.favorites, onAction = { a ->
+        AppMenuDialog(app, app.pkg in s.favorites, home.any { it.pkg == app.pkg }, onAction = { a ->
             when (a) {
                 AppAction.OPEN -> vm.launch(app.pkg)
                 AppAction.MOVE -> { vm.freezeOrder(); moving = app.pkg }
+                AppAction.HOME -> vm.toggleHome(app.pkg)
                 AppAction.FAVORITE -> vm.toggleFavorite(app.pkg)
                 AppAction.HIDE -> vm.update { it.copy(hidden = it.hidden + app.pkg) }
                 AppAction.INFO -> vm.openAppInfo(app.pkg)
@@ -133,13 +140,27 @@ fun HomeScreen(vm: HomeViewModel, openSettings: () -> Unit) {
     }
 
     if (showPicker) {
-        AppListDialog("Приложение для кнопки ТВ и постеров", visible, onClick = { app ->
+        AppListDialog("Приложение для кнопки ТВ и подборки", visible, onClick = { app ->
             vm.update { it.copy(tvPkg = app.pkg) }; showPicker = false
         }, onDismiss = { showPicker = false })
     }
+    if (showHomeApps) HomeAppsDialog(vm) { showHomeApps = false }
 }
 
-/** Фон: градиент, однотонный или картинка сфокусированного постера (плавная смена). */
+/** Медленный наезд фона (эффект Кена Бернса). */
+@Composable
+private fun KenBurns(enabled: Boolean, content: @Composable () -> Unit) {
+    if (!enabled) { Box(Modifier.fillMaxSize()) { content() }; return }
+    val inf = rememberInfiniteTransition(label = "kenburns")
+    val k by inf.animateFloat(
+        initialValue = 1f, targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(animation = tween(18000, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
+        label = "kb"
+    )
+    Box(Modifier.fillMaxSize().graphicsLayer { scaleX = k; scaleY = k }) { content() }
+}
+
+/** Фон: градиент, однотонный или кадр сфокусированной карточки (плавная смена + медленный наезд). */
 @Composable
 private fun HomeBackground(url: String?) {
     val s = LocalSettings.current
@@ -156,21 +177,21 @@ private fun HomeBackground(url: String?) {
                 var shown by remember { mutableStateOf(url) }
                 LaunchedEffect(url) { delay(250); shown = url }
                 Crossfade(targetState = shown, animationSpec = tween(animMs(550)), label = "bg") { u ->
-                    Box(Modifier.fillMaxSize()) {
-                        if (u != null) {
+                    if (u != null) {
+                        KenBurns(s.kenBurns && s.animOn) {
                             AsyncImage(u, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                        } else {
-                            Box(
-                                Modifier.fillMaxSize().background(
-                                    Brush.verticalGradient(listOf(cs.background, cs.primaryContainer.copy(alpha = 0.35f), cs.background))
-                                )
-                            )
                         }
+                    } else {
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.verticalGradient(listOf(cs.background, cs.primaryContainer.copy(alpha = 0.35f), cs.background))
+                            )
+                        )
                     }
                 }
                 val dim = Look.at(Look.BgDim, s.bgDim)
-                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(cs.background.copy(alpha = 0.92f), cs.background.copy(alpha = dim * 0.5f)))))
-                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(cs.background.copy(alpha = dim * 0.6f), cs.background.copy(alpha = dim), cs.background))))
+                Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(cs.background.copy(alpha = 0.92f), cs.background.copy(alpha = dim * 0.45f)))))
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(cs.background.copy(alpha = dim * 0.5f), cs.background.copy(alpha = dim * 0.7f), cs.background))))
             }
         }
     }
@@ -191,12 +212,18 @@ private fun TopBar(vm: HomeViewModel, tab: Int, onTab: (Int) -> Unit, openSettin
                 Modifier.height(26.dp).aspectRatio(720f / 177f).alpha(Look.at(Look.LogoAlphas, s.logoAlpha)),
                 colorFilter = ColorFilter.tint(cs.onSurface)
             )
-            Spacer(Modifier.width(22.dp))
+            Spacer(Modifier.width(20.dp))
         }
         if (s.showTabs) {
-            listOf("Для вас", "Приложения", "Избранное").forEachIndexed { i, name ->
-                TabPill(name, tab == i, onFocus = { if (s.tabOnFocus) onTab(i) }, onClick = { onTab(i) })
-                Spacer(Modifier.width(6.dp))
+            // Вкладки в общей «таблетке», как в Google TV
+            Row(
+                Modifier.clip(CircleShape).background(cs.surfaceContainer.copy(alpha = 0.75f)).padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf("Для вас", "Приложения", "Избранное").forEachIndexed { i, name ->
+                    TabPill(name, tab == i, onFocus = { if (s.tabOnFocus) onTab(i) }, onClick = { onTab(i) })
+                    if (i < 2) Spacer(Modifier.width(4.dp))
+                }
             }
         }
         Spacer(Modifier.weight(1f))
@@ -247,7 +274,12 @@ private fun WeatherChip(vm: HomeViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (w == null) {
-                Text("…", color = fg, style = MaterialTheme.typography.labelLarge)
+                // данных ещё нет (идёт загрузка или нет сети) — показываем город; причина видна в настройках погоды
+                Text("☁", style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.width(6.dp))
+                Text(if (vm.weatherError != null) "—°" else "…", color = fg, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.width(8.dp))
+                Text(s.city, color = fg, style = MaterialTheme.typography.labelMedium, maxLines = 1)
             } else {
                 val info = Repo.weatherInfo(w.code)
                 val r = w.temp.roundToInt()

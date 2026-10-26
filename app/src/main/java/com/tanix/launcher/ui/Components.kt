@@ -3,6 +3,7 @@
 package com.tanix.launcher.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -24,6 +25,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -41,7 +45,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tanix.launcher.data.AppItem
 
-/** Фокусируемый контейнер: пружинное увеличение + контур, поведение задаётся настройками анимаций. */
+/**
+ * Фокусируемый контейнер. Эффекты (все настраиваются): пружинное увеличение, контур,
+ * мягкое свечение вокруг и «блик», пробегающий по плитке при получении фокуса.
+ */
 @Composable
 fun FocusBox(
     modifier: Modifier = Modifier,
@@ -56,12 +63,19 @@ fun FocusBox(
     content: @Composable (Boolean) -> Unit
 ) {
     val st = LocalSettings.current
+    val cs = MaterialTheme.colorScheme
     var f by remember { mutableStateOf(false) }
     val k = Look.at(Look.FocusK, st.focusK)
     val target = 1f + (focusScale - 1f) * k
     val spec: AnimationSpec<Float> =
         if (st.animOn) spring(dampingRatio = 0.75f, stiffness = 420f / Look.at(Look.SpeedK, st.animSpeed)) else snap()
     val sc by animateFloatAsState(if (f) target else 1f, spec, label = "focusScale")
+    val glowA by animateFloatAsState(if (f && st.glow) 1f else 0f, tween(animMs(220)), label = "glow")
+    val shine = remember { Animatable(0f) }
+    LaunchedEffect(f) {
+        if (f && st.shine && st.animOn) { shine.snapTo(0f); shine.animateTo(1f, tween(650)) } else shine.snapTo(0f)
+    }
+    val accent = ringColor ?: cs.primary
     val ring = f && st.focusStyle != 1
     Box(
         modifier
@@ -69,8 +83,36 @@ fun FocusBox(
             .scale(sc)
             .onFocusChanged { f = it.isFocused; onFocusChange?.invoke(it.isFocused) }
             .onKeyEvent { e -> onKey?.invoke(e) ?: false }
+            .drawBehind {
+                if (glowA > 0.01f) {
+                    val base = if (shape === CircleShape) size.minDimension / 2f else 14.dp.toPx()
+                    for (i in 1..3) {
+                        val g = i * 5.dp.toPx()
+                        drawRoundRect(
+                            color = accent.copy(alpha = 0.16f * glowA / i),
+                            topLeft = Offset(-g, -g),
+                            size = Size(size.width + 2 * g, size.height + 2 * g),
+                            cornerRadius = CornerRadius(base + g)
+                        )
+                    }
+                }
+            }
             .clip(shape)
-            .border(if (ring) 3.dp else 0.dp, ringColor ?: MaterialTheme.colorScheme.primary, shape)
+            .drawWithContent {
+                drawContent()
+                val p = shine.value
+                if (p > 0f && p < 1f) {
+                    val x = size.width * (-0.3f + 1.6f * p)
+                    drawRect(
+                        Brush.linearGradient(
+                            listOf(Color.Transparent, Color.White.copy(alpha = 0.30f), Color.Transparent),
+                            start = Offset(x - size.width * 0.15f, 0f),
+                            end = Offset(x + size.width * 0.15f, size.height)
+                        )
+                    )
+                }
+            }
+            .border(if (ring) 3.dp else 0.dp, accent, shape)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) { content(f) }
 }
@@ -111,6 +153,7 @@ fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) 
         modifier = Modifier.padding(start = 16.dp, top = 18.dp, bottom = 8.dp))
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainer).padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
         content = content
     )
 }
@@ -183,11 +226,10 @@ fun TvIcon(tint: Color, modifier: Modifier = Modifier.size(22.dp)) {
     }
 }
 
-/** Значок приложения в выбранной форме (круг / скруглённый / квадрат). */
+/** Значок приложения в оригинальных цветах (без оформления Material You). */
 @Composable
-fun AppIcon(app: AppItem, size: Dp, shape: Shape = iconShapeOf(LocalSettings.current.iconShape)) {
-    val cs = MaterialTheme.colorScheme
-    Box(Modifier.size(size).clip(shape).background(cs.surfaceContainerHighest), contentAlignment = Alignment.Center) {
+fun AppIcon(app: AppItem, size: Dp, shape: Shape = iconShapeOf(0)) {
+    Box(Modifier.size(size).clip(shape).background(NeutralTile), contentAlignment = Alignment.Center) {
         app.icon?.let {
             if (app.adaptive) Image(it, app.label, Modifier.fillMaxSize().scale(1.5f))
             else Image(it, app.label, Modifier.fillMaxSize().padding(size * 0.18f))

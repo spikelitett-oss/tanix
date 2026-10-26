@@ -36,8 +36,8 @@ data class LauncherSettings(
     // ---- Ряды ----
     val showHero: Boolean = true,
     val showAppsRow: Boolean = true,
-    val showFavRow: Boolean = true,
-    val showRecentRow: Boolean = true,
+    val showFavRow: Boolean = false,
+    val showRecentRow: Boolean = false,
     val rowOrder: List<String> = DefaultRowOrder,
 
     // ---- Постеры ----
@@ -53,12 +53,18 @@ data class LauncherSettings(
     val showLabels: Boolean = true,
     val sortMode: Int = 1,               // 0 алфавит, 1 свой порядок, 2 недавние
 
+    val tileStyle: Int = 0,              // 0 баннеры 16:9 (как в Google TV), 1 круг, 2 скруглённый, 3 квадрат
+    val labelMode: Int = 1,              // 0 всегда, 1 при фокусе, 2 скрыть
+
     // ---- Анимации ----
     val animOn: Boolean = true,
     val animSpeed: Int = 1,              // 0 быстро, 1 обычно, 2 плавно
     val focusK: Int = 2,                 // сила увеличения при фокусе
     val focusStyle: Int = 0,             // 0 контур+увеличение, 1 только увеличение, 2 только контур
     val enterAnim: Boolean = true,
+    val glow: Boolean = true,            // свечение вокруг сфокусированной плитки
+    val shine: Boolean = true,           // блик, пробегающий по плитке
+    val kenBurns: Boolean = true,        // медленный наезд фона
     val pivotScroll: Boolean = true,     // «как в Google TV»: фокус держится у края при прокрутке
 
     // ---- Погода ----
@@ -78,5 +84,7 @@ data class LauncherSettings(
     val hidden: Set<String> = emptySet(),
     val favorites: Set<String> = emptySet(),
     val recents: List<String> = emptyList(),
-    val appOrder: List<String> = emptyList()
+    val appOrder: List<String> = emptyList(),
+    val homeConfigured: Boolean = false, // false: на главном экране первые 15 приложений
+    val homeApps: List<String> = emptyList()
 )

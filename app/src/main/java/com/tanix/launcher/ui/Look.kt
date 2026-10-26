@@ -8,6 +8,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import com.tanix.launcher.data.LauncherSettings
 
+/** Нейтральный тёмный фон плиток приложений (без цветов Material You). */
+val NeutralTile = androidx.compose.ui.graphics.Color(0xFF202124)
+
 val LocalSettings = staticCompositionLocalOf { LauncherSettings() }
 
 /** Таблицы значений для индексов из настроек. */
@@ -22,6 +25,8 @@ object Look {
     val FocusK = floatArrayOf(0f, .5f, 1f, 1.6f)
     val SpeedK = floatArrayOf(.6f, 1f, 1.5f)
     val BgDim = floatArrayOf(.55f, .7f, .85f)
+    val TileW = intArrayOf(112, 136, 160, 192)   // ширина баннерной плитки приложения
+    val PickW = intArrayOf(140, 172, 210)         // ширина карточки подборки (16:9)
 
     fun at(a: FloatArray, i: Int): Float = a[i.coerceIn(0, a.lastIndex)]
     fun at(a: IntArray, i: Int): Int = a[i.coerceIn(0, a.lastIndex)]
